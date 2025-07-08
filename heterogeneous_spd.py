@@ -122,8 +122,8 @@ class NGramTranslator:
                 if len(acc) > 50: break  # safety stop
             if found is None:
                 # fall back to byte-level decomposition
-                bytestr = acc.encode("utf-8")
-                found = self.ttok(bytestr, add_special_tokens=False)["input_ids"]
+                # Convert accumulated tokens back to string for tokenizer
+                found = self.ttok(acc, add_special_tokens=False)["input_ids"]
                 found_slice = slice(start, end)
             tgt_ids.extend(found)
             spans.extend([found_slice]*len(found))
