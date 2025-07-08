@@ -244,48 +244,62 @@ def decode_token_safely(tokenizer, token_id):
 def build_tree(draft_lp: torch.Tensor,
                max_depth: int = 8,
                conf_thresh: float = 0.2,
-               tokenizer=None):
+               tokenizer=None) -> List[int]:
     """
-    draft_lp:   [L, vocab] log-probs for each speculative position.
-    Returns the *draft_prefix* we will propose this round (token ids).
-    Heuristic: extend while top-prob ≥ conf_thresh, else stop.
+    Greedy tree construction: pick the most confident tokens up to max_depth.
     """
     logger.debug(f"build_tree called with draft_lp shape: {draft_lp.shape}")
     logger.debug(f"Parameters: max_depth={max_depth}, conf_thresh={conf_thresh}")
     logger.debug(f"Tokenizer provided: {tokenizer is not None}")
     
     prefix = []
-    for pos in range(min(max_depth, draft_lp.shape[0])):
-        # Get top-5 predictions for debugging
-        top5_logprobs, top5_ids = torch.topk(draft_lp[pos], k=5)
-        top5_probs = torch.exp(top5_logprobs)
+    for i in range(min(max_depth, draft_lp.shape[0])):
+        # Get probabilities (not log probabilities) - ensure proper conversion
+        probs = torch.softmax(draft_lp[i], dim=-1)
+        top_prob, top_id = torch.max(probs, dim=-1)
         
-        top_prob = top5_probs[0].item()
-        top_id = top5_ids[0].item()
+        # Clamp probability to valid range [0, 1] to fix the >1.0 bug
+        top_prob_clamped = torch.clamp(top_prob, 0.0, 1.0)
         
-        logger.debug(f"Position {pos}: top_prob={top_prob:.4f}, top_id={top_id}, current_prefix_len={len(prefix)}")
+        logger.debug(f"Position {i}: top_prob={top_prob_clamped.item():.4f}, top_id={top_id.item()}, current_prefix_len={len(prefix)}")
+        
         if tokenizer:
-            # Test decode the top token first
-            top_token_text = decode_token_safely(tokenizer, top_id)
-            logger.debug(f"  Top token decoded: {top_token_text}")
+            token_text = tokenizer.decode([top_id.item()])
+            logger.debug(f"  Top token decoded: '{token_text}'")
             logger.debug(f"  Top-5 draft predictions:")
-            for i in range(5):
-                token_id = top5_ids[i].item()
-                prob = top5_probs[i].item()
-                token_text = decode_token_safely(tokenizer, token_id)
-                logger.debug(f"    {i+1}. '{token_text}' (id:{token_id}, prob:{prob:.4f})")
-        else:
-            logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}') for i in range(5)]}")
+            
+            # Get top-5 for debugging
+            top5_probs, top5_ids = torch.topk(probs, 5)
+            for j, (prob, token_id) in enumerate(zip(top5_probs, top5_ids)):
+                token_text = tokenizer.decode([token_id.item()])
+                # Clamp each probability
+                prob_clamped = torch.clamp(prob, 0.0, 1.0)
+                logger.debug(f"    {j+1}. '{token_text}' (id:{token_id.item()}, prob:{prob_clamped.item():.4f})")
         
-        if top_prob < conf_thresh:
-            logger.debug(f"Stopping: confidence {top_prob:.4f} < threshold {conf_thresh}")
-            break
-        if len(prefix) >= max_depth:
-            logger.debug(f"Stopping: reached max_depth {max_depth}")
+        # Stop if confidence is too low
+        if top_prob_clamped.item() < conf_thresh:
+            logger.debug(f"Stopping at position {i}: confidence {top_prob_clamped.item():.4f} < threshold {conf_thresh}")
             break
             
-        prefix.append(int(top_id))
+        # Prevent repetitive generation by checking if we're repeating the same token
+        if len(prefix) >= 2 and all(t == top_id.item() for t in prefix[-2:]):
+            logger.debug(f"Stopping at position {i}: detected repetitive token generation (token {top_id.item()})")
+            break
+            
+        # Additional check: if the same token appears 3+ times in the last 4 positions
+        if len(prefix) >= 3:
+            recent_tokens = prefix[-3:]
+            if recent_tokens.count(top_id.item()) >= 2:
+                logger.debug(f"Stopping at position {i}: token {top_id.item()} appears too frequently in recent history")
+                break
+            
+        prefix.append(top_id.item())
         
+        # Early stopping if we hit a natural boundary (period, newline, etc.)
+        if tokenizer and top_id.item() in [tokenizer.eos_token_id, 13, 198]:  # EOS, \n tokens
+            logger.debug(f"Stopping at position {i}: hit natural boundary token {top_id.item()}")
+            break
+    
     logger.debug(f"build_tree returning prefix of length {len(prefix)}: {prefix}")
     return prefix
 
@@ -417,8 +431,21 @@ def heterogeneous_spec_decode(prompt: str,
     large_device = next(large_lm.parameters()).device
     logger.debug(f"Model devices - tiny: {tiny_device}, large: {large_device}")
     
-    tiny_ids   = tiny_tok(prompt, return_tensors='pt').input_ids.to(tiny_device)
-    large_ids  = large_tok(prompt, return_tensors='pt').input_ids.to(large_device)
+    # Encode with add_special_tokens=False to avoid BOS token mismatch
+    tiny_ids   = tiny_tok(prompt, return_tensors='pt', add_special_tokens=False).input_ids.to(tiny_device)
+    large_ids  = large_tok(prompt, return_tensors='pt', add_special_tokens=False).input_ids.to(large_device)
+    
+    # Add BOS token manually if needed (some models require it)
+    if tiny_tok.bos_token_id is not None and tiny_ids[0, 0] != tiny_tok.bos_token_id:
+        bos_tensor = torch.tensor([[tiny_tok.bos_token_id]], device=tiny_device)
+        tiny_ids = torch.cat([bos_tensor, tiny_ids], dim=1)
+        logger.debug("Added BOS token to tiny model input")
+    
+    if large_tok.bos_token_id is not None and large_ids[0, 0] != large_tok.bos_token_id:
+        bos_tensor = torch.tensor([[large_tok.bos_token_id]], device=large_device)
+        large_ids = torch.cat([bos_tensor, large_ids], dim=1)
+        logger.debug("Added BOS token to large model input")
+    
     logger.debug(f"Encoded prompt - tiny_ids shape: {tiny_ids.shape}, large_ids shape: {large_ids.shape}")
     logger.debug(f"Tiny tokens: {tiny_ids[0].tolist()[:10]}{'...' if tiny_ids.shape[1] > 10 else ''}")
     logger.debug(f"Large tokens: {large_ids[0].tolist()[:10]}{'...' if large_ids.shape[1] > 10 else ''}")
