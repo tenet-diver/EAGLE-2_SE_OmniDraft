@@ -122,8 +122,8 @@ class NGramTranslator:
                 if len(acc) > 50: break  # safety stop
             if found is None:
                 # fall back to byte-level decomposition
-                # Convert accumulated tokens back to string for tokenizer
-                found = self.ttok(acc, add_special_tokens=False)["input_ids"]
+                bytestr = acc.encode("utf-8")
+                found = self.ttok(bytestr, add_special_tokens=False)["input_ids"]
                 found_slice = slice(start, end)
             tgt_ids.extend(found)
             spans.extend([found_slice]*len(found))
@@ -178,7 +178,7 @@ def spec_ensemble_verify(prefix_ids:  List[int],
     Returns length of accepted prefix (0..len(prefix))
     """
     # mixture logits then probs
-    mix_lp = torch.logaddexp(torch.log1p(-alpha) + large_lp,
+    mix_lp = torch.logaddexp(math.log1p(-alpha) + large_lp,
                              math.log(alpha)    + draft_lp)
     draft_probs = draft_lp.softmax(-1)
     mix_probs   = mix_lp.softmax(-1)
