@@ -302,7 +302,7 @@ def spec_ensemble_verify(prefix_ids:  List[int],
     logger.debug(f"draft_lp shape: {draft_lp.shape}, large_lp shape: {large_lp.shape}")
     logger.debug(f"alpha parameter: {alpha}")
     
-    # CRITICAL FIX: Force vocabulary size projection
+    # CRITICAL FIX: Force vocabulary size projection BEFORE mixing
     draft_vocab_size = draft_lp.shape[-1]
     large_vocab_size = large_lp.shape[-1]
     logger.debug(f"Checking vocab sizes: draft={draft_vocab_size}, large={large_vocab_size}")
