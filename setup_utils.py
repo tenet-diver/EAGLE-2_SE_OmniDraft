@@ -126,20 +126,20 @@ class ModelManager:
             return None, None
     
     def load_large_model(self) -> Tuple[Optional[AutoTokenizer], Optional[AutoModelForCausalLM]]:
-        """Load Meta-Llama model and tokenizer."""
+        """Load Qwen/Qwen3-0.6B model and tokenizer."""
         try:
-            print("Loading Meta-Llama tokenizer...")
+            print("Loading Qwen/Qwen3-0.6B tokenizer...")
             tokenizer = AutoTokenizer.from_pretrained(self.large_id)
-            print("✅ Meta-Llama tokenizer loaded")
+            print("✅ Qwen/Qwen3-0.6B tokenizer loaded")
             
-            print("Loading Meta-Llama model (this may take a while)...")
+            print("Loading Qwen/Qwen3-0.6B model (this may take a while)...")
             model = AutoModelForCausalLM.from_pretrained(self.large_id).to(self.device).eval()
-            print("✅ Meta-Llama model loaded")
+            print("✅ Qwen/Qwen3-0.6B model loaded")
             
             return tokenizer, model
             
         except Exception as e:
-            print(f"❌ Error loading Meta-Llama: {e}")
+            print(f"❌ Error loading Qwen/Qwen3-0.6B: {e}")
             print("Note: You may need to:")
             print("1. Accept the license agreement on HuggingFace")
             print("2. Login with: huggingface-cli login")
