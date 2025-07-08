@@ -263,7 +263,12 @@ def build_tree(draft_lp: torch.Tensor,
         
         logger.debug(f"Position {pos}: top_prob={top_prob:.4f}, top_id={top_id}, current_prefix_len={len(prefix)}")
         if tokenizer:
-            logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}', decode_token_safely(tokenizer, top5_ids[i].item())) for i in range(5)]}")
+            logger.debug(f"  Top-5 draft predictions:")
+            for i in range(5):
+                token_id = top5_ids[i].item()
+                prob = top5_probs[i].item()
+                token_text = decode_token_safely(tokenizer, token_id)
+                logger.debug(f"    {i+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
         else:
             logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}') for i in range(5)]}")
         
@@ -348,11 +353,29 @@ def spec_ensemble_verify(prefix_ids:  List[int],
         mix_top5_logprobs, mix_top5_ids = torch.topk(mix_lp[i], k=5)
         mix_top5_probs = torch.exp(mix_top5_logprobs)
         
-        logger.debug(f"=== Verification step {i} for token {tok} ===")
-        # Note: Using large tokenizer for decoding since we're in target vocab space
-        logger.debug(f"  Draft top-5: {[(draft_top5_ids[j].item(), f'{draft_top5_probs[j].item():.4f}', decode_token_safely(large_tok, draft_top5_ids[j].item())) for j in range(5)]}")
-        logger.debug(f"  Large top-5: {[(large_top5_ids[j].item(), f'{large_top5_probs[j].item():.4f}', decode_token_safely(large_tok, large_top5_ids[j].item())) for j in range(5)]}")
-        logger.debug(f"  Mixture top-5: {[(mix_top5_ids[j].item(), f'{mix_top5_probs[j].item():.4f}', decode_token_safely(large_tok, mix_top5_ids[j].item())) for j in range(5)]}")
+        proposed_token_text = decode_token_safely(large_tok, tok)
+        logger.debug(f"=== Verification step {i} for token {proposed_token_text} (id:{tok}) ===")
+        
+        logger.debug(f"  Draft model top-5 predictions:")
+        for j in range(5):
+            token_id = draft_top5_ids[j].item()
+            prob = draft_top5_probs[j].item()
+            token_text = decode_token_safely(large_tok, token_id)
+            logger.debug(f"    {j+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
+            
+        logger.debug(f"  Large model top-5 predictions:")
+        for j in range(5):
+            token_id = large_top5_ids[j].item()
+            prob = large_top5_probs[j].item()
+            token_text = decode_token_safely(large_tok, token_id)
+            logger.debug(f"    {j+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
+            
+        logger.debug(f"  Mixture model top-5 predictions:")
+        for j in range(5):
+            token_id = mix_top5_ids[j].item()
+            prob = mix_top5_probs[j].item()
+            token_text = decode_token_safely(large_tok, token_id)
+            logger.debug(f"    {j+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
         
         ratio = (mix_probs[i, tok] / draft_probs[i, tok]).item()
         random_val = np.random.rand()
@@ -454,7 +477,12 @@ def heterogeneous_spec_decode(prompt: str,
                     fallback_top5_logprobs, fallback_top5_ids = torch.topk(fallback_logits, k=5)
                     fallback_top5_probs = torch.softmax(fallback_top5_logprobs, dim=0)
                     logger.debug(f"=== Large model fallback predictions ===")
-                    logger.debug(f"  Large top-5: {[(fallback_top5_ids[j].item(), f'{fallback_top5_probs[j].item():.4f}', decode_token_safely(large_tok, fallback_top5_ids[j].item())) for j in range(5)]}")
+                    logger.debug(f"  Large model top-5 predictions:")
+                    for j in range(5):
+                        token_id = fallback_top5_ids[j].item()
+                        prob = fallback_top5_probs[j].item()
+                        token_text = decode_token_safely(large_tok, token_id)
+                        logger.debug(f"    {j+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
                 
                 next_tok_full = large_lm.generate(out_large, max_new_tokens=1)
                 next_tok = next_tok_full[0, -1:].unsqueeze(0)  # Ensure 2D shape [1, 1]
