@@ -171,6 +171,7 @@ class NGramTranslator:
         while start < len(draft_ids):
             acc, end = "", start
             found = None
+            found_slice = slice(start, start)  # Initialize to avoid lint error
             logger.debug(f"Merge step {merge_steps}: starting at position {start}")
             
             while end < len(draft_ids):
@@ -579,6 +580,25 @@ if __name__ == "__main__":
     
     prompt = "Eiffel tower is in "
     logger.info(f"Test prompt: '{prompt}'")
+    
+    # Debug tokenization differences
+    logger.info("=== TOKENIZATION ANALYSIS ===")
+    tiny_tokens = tiny_tok(prompt, return_tensors='pt').input_ids[0]
+    large_tokens = large_tok(prompt, return_tensors='pt').input_ids[0]
+    
+    logger.info(f"Tiny tokenizer ({tiny_tok.__class__.__name__}):")
+    for i, token_id in enumerate(tiny_tokens.tolist()):
+        token_text = tiny_tok.decode([token_id])
+        logger.info(f"  {i}: {token_id} -> '{token_text}'")
+    
+    logger.info(f"Large tokenizer ({large_tok.__class__.__name__}):")
+    for i, token_id in enumerate(large_tokens.tolist()):
+        token_text = large_tok.decode([token_id])
+        logger.info(f"  {i}: {token_id} -> '{token_text}'")
+    
+    logger.info(f"Tiny full decode: '{tiny_tok.decode(tiny_tokens)}'")
+    logger.info(f"Large full decode: '{large_tok.decode(large_tokens)}'")
+    logger.info("=== END TOKENIZATION ANALYSIS ===")
     
     logger.info("Beginning heterogeneous speculative decoding...")
     result = heterogeneous_spec_decode(prompt, max_new_tokens=120)
