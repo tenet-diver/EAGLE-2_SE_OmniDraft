@@ -233,9 +233,17 @@ translator = NGramTranslator(tiny_tok, large_tok)
 # ------------------------------------------------------------
 # 2.  EAGLE-2 DYNAMIC TREE  (minimal version)
 # ------------------------------------------------------------
+def decode_token_safely(tokenizer, token_id):
+    """Safely decode a single token ID to text, handling potential errors."""
+    try:
+        return repr(tokenizer.decode([token_id]))
+    except:
+        return f"<id:{token_id}>"
+
 def build_tree(draft_lp: torch.Tensor,
                max_depth: int = 8,
-               conf_thresh: float = 0.2) -> List[int]:
+               conf_thresh: float = 0.2,
+               tokenizer=None):
     """
     draft_lp:   [L, vocab] log-probs for each speculative position.
     Returns the *draft_prefix* we will propose this round (token ids).
@@ -245,9 +253,19 @@ def build_tree(draft_lp: torch.Tensor,
     logger.debug(f"Parameters: max_depth={max_depth}, conf_thresh={conf_thresh}")
     
     prefix = []
-    for i, lp in enumerate(draft_lp):
-        top_prob, top_id = lp.softmax(-1).max(dim=-1)
-        logger.debug(f"Position {i}: top_prob={top_prob:.4f}, top_id={top_id}, current_prefix_len={len(prefix)}")
+    for pos in range(min(max_depth, draft_lp.shape[0])):
+        # Get top-5 predictions for debugging
+        top5_logprobs, top5_ids = torch.topk(draft_lp[pos], k=5)
+        top5_probs = torch.exp(top5_logprobs)
+        
+        top_prob = top5_probs[0].item()
+        top_id = top5_ids[0].item()
+        
+        logger.debug(f"Position {pos}: top_prob={top_prob:.4f}, top_id={top_id}, current_prefix_len={len(prefix)}")
+        if tokenizer:
+            logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}', decode_token_safely(tokenizer, top5_ids[i].item())) for i in range(5)]}")
+        else:
+            logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}') for i in range(5)]}")
         
         if top_prob < conf_thresh:
             logger.debug(f"Stopping: confidence {top_prob:.4f} < threshold {conf_thresh}")
@@ -320,6 +338,22 @@ def spec_ensemble_verify(prefix_ids:  List[int],
 
     accepted = 0
     for i, tok in enumerate(prefix_ids):
+        # Get top-5 predictions from both models for debugging
+        draft_top5_logprobs, draft_top5_ids = torch.topk(draft_lp[i], k=5)
+        draft_top5_probs = torch.exp(draft_top5_logprobs)
+        
+        large_top5_logprobs, large_top5_ids = torch.topk(large_lp[i], k=5)
+        large_top5_probs = torch.exp(large_top5_logprobs)
+        
+        mix_top5_logprobs, mix_top5_ids = torch.topk(mix_lp[i], k=5)
+        mix_top5_probs = torch.exp(mix_top5_logprobs)
+        
+        logger.debug(f"=== Verification step {i} for token {tok} ===")
+        # Note: Using large tokenizer for decoding since we're in target vocab space
+        logger.debug(f"  Draft top-5: {[(draft_top5_ids[j].item(), f'{draft_top5_probs[j].item():.4f}', decode_token_safely(large_tok, draft_top5_ids[j].item())) for j in range(5)]}")
+        logger.debug(f"  Large top-5: {[(large_top5_ids[j].item(), f'{large_top5_probs[j].item():.4f}', decode_token_safely(large_tok, large_top5_ids[j].item())) for j in range(5)]}")
+        logger.debug(f"  Mixture top-5: {[(mix_top5_ids[j].item(), f'{mix_top5_probs[j].item():.4f}', decode_token_safely(large_tok, mix_top5_ids[j].item())) for j in range(5)]}")
+        
         ratio = (mix_probs[i, tok] / draft_probs[i, tok]).item()
         random_val = np.random.rand()
         logger.debug(f"Token {i} (id={tok}): ratio={ratio:.4f}, random={random_val:.4f}")
@@ -407,12 +441,21 @@ def heterogeneous_spec_decode(prompt: str,
 
             # 3) draft tree chooses prefix to propose
             logger.debug("Step 3: Building draft tree to choose prefix")
-            draft_prefix = build_tree(draft_lp)
+            draft_prefix = build_tree(draft_lp, tokenizer=tiny_tok)
             total_proposed += len(draft_prefix)
             
             if not draft_prefix:
                 logger.info("Draft tree returned empty prefix - falling back to large model")
                 # drafter not confident – fall back to large model for 1 token
+                
+                # Get logits to show top-5 predictions before generating
+                with torch.no_grad():
+                    fallback_logits = large_lm(out_large).logits[0, -1, :]
+                    fallback_top5_logprobs, fallback_top5_ids = torch.topk(fallback_logits, k=5)
+                    fallback_top5_probs = torch.softmax(fallback_top5_logprobs, dim=0)
+                    logger.debug(f"=== Large model fallback predictions ===")
+                    logger.debug(f"  Large top-5: {[(fallback_top5_ids[j].item(), f'{fallback_top5_probs[j].item():.4f}', decode_token_safely(large_tok, fallback_top5_ids[j].item())) for j in range(5)]}")
+                
                 next_tok_full = large_lm.generate(out_large, max_new_tokens=1)
                 next_tok = next_tok_full[0, -1:].unsqueeze(0)  # Ensure 2D shape [1, 1]
                 logger.debug(f"Large model fallback token: {next_tok.squeeze().item()}")
