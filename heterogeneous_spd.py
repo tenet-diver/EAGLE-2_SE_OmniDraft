@@ -44,7 +44,7 @@ def load_model_efficiently(model_id: str, device: str = "cuda", offload_to_cpu: 
 # Load tokenizers first (lightweight)
 print("Loading tokenizers...")
 TINY_ID   = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-LARGE_ID  = "microsoft/Phi-4-mini-instruct"
+LARGE_ID  = "Qwen/Qwen3-0.6B"
 
 tiny_tok  = AutoTokenizer.from_pretrained(TINY_ID)
 large_tok = AutoTokenizer.from_pretrained(LARGE_ID)
