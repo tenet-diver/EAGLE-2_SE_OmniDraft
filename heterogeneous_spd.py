@@ -251,6 +251,7 @@ def build_tree(draft_lp: torch.Tensor,
     """
     logger.debug(f"build_tree called with draft_lp shape: {draft_lp.shape}")
     logger.debug(f"Parameters: max_depth={max_depth}, conf_thresh={conf_thresh}")
+    logger.debug(f"Tokenizer provided: {tokenizer is not None}")
     
     prefix = []
     for pos in range(min(max_depth, draft_lp.shape[0])):
@@ -263,12 +264,15 @@ def build_tree(draft_lp: torch.Tensor,
         
         logger.debug(f"Position {pos}: top_prob={top_prob:.4f}, top_id={top_id}, current_prefix_len={len(prefix)}")
         if tokenizer:
+            # Test decode the top token first
+            top_token_text = decode_token_safely(tokenizer, top_id)
+            logger.debug(f"  Top token decoded: {top_token_text}")
             logger.debug(f"  Top-5 draft predictions:")
             for i in range(5):
                 token_id = top5_ids[i].item()
                 prob = top5_probs[i].item()
                 token_text = decode_token_safely(tokenizer, token_id)
-                logger.debug(f"    {i+1}. {token_text} (id:{token_id}, prob:{prob:.4f})")
+                logger.debug(f"    {i+1}. '{token_text}' (id:{token_id}, prob:{prob:.4f})")
         else:
             logger.debug(f"  Top-5 draft predictions: {[(top5_ids[i].item(), f'{top5_probs[i].item():.4f}') for i in range(5)]}")
         
@@ -572,7 +576,7 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     logger.debug("Random seed set to 42")
     
-    prompt = "In speculative decoding, researchers are exploring"
+    prompt = "Eiffel tower is in "
     logger.info(f"Test prompt: '{prompt}'")
     
     logger.info("Beginning heterogeneous speculative decoding...")
