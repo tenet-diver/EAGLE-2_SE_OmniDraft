@@ -275,6 +275,40 @@ def spec_ensemble_verify(prefix_ids:  List[int],
     logger.debug(f"draft_lp shape: {draft_lp.shape}, large_lp shape: {large_lp.shape}")
     logger.debug(f"alpha parameter: {alpha}")
     
+    # Check if vocabulary sizes match
+    if draft_lp.shape[-1] != large_lp.shape[-1]:
+        logger.debug(f"Vocabulary size mismatch: draft={draft_lp.shape[-1]}, large={large_lp.shape[-1]}")
+        logger.debug("Projecting draft logits to target vocabulary space")
+        
+        # Create a projection tensor to map draft vocab to target vocab
+        # For tokens that exist in both vocabs, use direct mapping
+        # For tokens that don't exist in target vocab, distribute probability uniformly
+        device = draft_lp.device
+        target_vocab_size = large_lp.shape[-1]
+        draft_vocab_size = draft_lp.shape[-1]
+        
+        # Create expanded draft logits with target vocab size
+        expanded_draft_lp = torch.full(
+            (draft_lp.shape[0], target_vocab_size), 
+            float('-inf'), 
+            device=device, 
+            dtype=draft_lp.dtype
+        )
+        
+        # Copy the draft logits to the first draft_vocab_size positions
+        # This assumes the first part of target vocab overlaps with draft vocab
+        expanded_draft_lp[:, :draft_vocab_size] = draft_lp
+        
+        # For remaining positions, use a small uniform probability
+        remaining_positions = target_vocab_size - draft_vocab_size
+        if remaining_positions > 0:
+            # Set a very low but finite log probability for unknown tokens
+            uniform_logp = math.log(1e-10)  # Very small probability
+            expanded_draft_lp[:, draft_vocab_size:] = uniform_logp
+            
+        draft_lp = expanded_draft_lp
+        logger.debug(f"Draft logits expanded to shape: {draft_lp.shape}")
+    
     # mixture logits then probs
     mix_lp = torch.logaddexp(math.log1p(-alpha) + large_lp,
                              math.log(alpha)    + draft_lp)
