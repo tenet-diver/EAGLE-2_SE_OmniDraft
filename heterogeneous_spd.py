@@ -14,16 +14,61 @@ from typing      import List, Tuple
 # 0.  LOAD MODELS (edit to taste)
 # ------------------------------------------------------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {DEVICE}")
 
-# tiny draft model – any small LM
+# Memory management utilities
+def clear_gpu_memory():
+    """Clear GPU memory cache"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+def load_model_efficiently(model_id: str, device: str = "cuda", offload_to_cpu: bool = False):
+    """Load model with memory management"""
+    print(f"Loading model: {model_id}")
+    clear_gpu_memory()
+    
+    # Load with lower precision to save memory
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,  # Use half precision
+        device_map="auto" if not offload_to_cpu else "cpu",
+        low_cpu_mem_usage=True
+    )
+    
+    if not offload_to_cpu and device == "cuda":
+        model = model.to(device)
+    
+    return model.eval()
+
+# Load tokenizers first (lightweight)
+print("Loading tokenizers...")
 TINY_ID   = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-tiny_tok  = AutoTokenizer.from_pretrained(TINY_ID)
-tiny_lm   = AutoModelForCausalLM.from_pretrained(TINY_ID).to(DEVICE).eval()
+LARGE_ID  = "microsoft/Phi-4-mini-instruct"
 
-# target **large** model – final arbiter
-LARGE_ID  = "meta-llama/Meta-Llama-3-8B"
+tiny_tok  = AutoTokenizer.from_pretrained(TINY_ID)
 large_tok = AutoTokenizer.from_pretrained(LARGE_ID)
-large_lm  = AutoModelForCausalLM.from_pretrained(LARGE_ID).to(DEVICE).eval()
+
+# Add padding tokens if missing
+if tiny_tok.pad_token is None:
+    tiny_tok.pad_token = tiny_tok.eos_token
+if large_tok.pad_token is None:
+    large_tok.pad_token = large_tok.eos_token
+
+# Load models with memory management
+print("Loading tiny model...")
+tiny_lm = load_model_efficiently(TINY_ID, DEVICE)
+
+print("Loading large model...")
+# Try to load large model, fallback to CPU if OOM
+try:
+    large_lm = load_model_efficiently(LARGE_ID, DEVICE)
+    print("Large model loaded on GPU")
+except torch.cuda.OutOfMemoryError:
+    print("GPU OOM detected, loading large model on CPU")
+    clear_gpu_memory()
+    large_lm = load_model_efficiently(LARGE_ID, "cpu", offload_to_cpu=True)
+    print("Large model loaded on CPU")
 
 # Optional: medium model (4-bit quantised large) would fit here
 # ------------------------------------------------------------
@@ -154,9 +199,17 @@ def heterogeneous_spec_decode(prompt: str,
                               max_new_tokens: int = 128,
                               K: int = 64,
                               alpha: float = 0.15):
+    """
+    Heterogeneous speculative decoding with memory-efficient model handling.
+    Handles cases where models might be on different devices (CPU/GPU).
+    """
     # encode prompt separately for each model
-    tiny_ids   = tiny_tok(prompt, return_tensors='pt').input_ids.to(DEVICE)
-    large_ids  = large_tok(prompt, return_tensors='pt').input_ids.to(DEVICE)
+    # Handle device placement for mixed CPU/GPU scenarios
+    tiny_device = next(tiny_lm.parameters()).device
+    large_device = next(large_lm.parameters()).device
+    
+    tiny_ids   = tiny_tok(prompt, return_tensors='pt').input_ids.to(tiny_device)
+    large_ids  = large_tok(prompt, return_tensors='pt').input_ids.to(large_device)
     out_large  = large_ids.clone()
 
     with torch.no_grad():
