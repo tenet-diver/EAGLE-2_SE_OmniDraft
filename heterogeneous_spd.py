@@ -188,7 +188,9 @@ class NGramTranslator:
                 # fall back to byte-level decomposition
                 logger.debug(f"No cache hit for '{acc}', using byte-level decomposition")
                 bytestr = acc.encode("utf-8")
-                found = self.ttok(bytestr, add_special_tokens=False)["input_ids"]
+                # Decode bytes back to string for tokenizer (handles any encoding issues)
+                decoded_str = bytestr.decode("utf-8", errors="replace")
+                found = self.ttok(decoded_str, add_special_tokens=False)["input_ids"]
                 found_slice = slice(start, end)
                 logger.debug(f"Byte-level result: {len(found)} tokens")
                 
