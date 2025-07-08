@@ -302,15 +302,18 @@ def spec_ensemble_verify(prefix_ids:  List[int],
     logger.debug(f"draft_lp shape: {draft_lp.shape}, large_lp shape: {large_lp.shape}")
     logger.debug(f"alpha parameter: {alpha}")
     
-    # Check if vocabulary sizes match - CRITICAL FIX
-    if draft_lp.shape[-1] != large_lp.shape[-1]:
-        logger.debug(f"Vocabulary size mismatch: draft={draft_lp.shape[-1]}, large={large_lp.shape[-1]}")
+    # CRITICAL FIX: Force vocabulary size projection
+    draft_vocab_size = draft_lp.shape[-1]
+    large_vocab_size = large_lp.shape[-1]
+    logger.debug(f"Checking vocab sizes: draft={draft_vocab_size}, large={large_vocab_size}")
+    
+    if draft_vocab_size != large_vocab_size:
+        logger.debug(f"VOCAB MISMATCH DETECTED: draft={draft_vocab_size}, large={large_vocab_size}")
         logger.debug("Projecting draft logits to target vocabulary space")
         
         # Create a projection tensor to map draft vocab to target vocab
         device = draft_lp.device
-        target_vocab_size = large_lp.shape[-1]
-        draft_vocab_size = draft_lp.shape[-1]
+        target_vocab_size = large_vocab_size
         
         # Create expanded draft logits with target vocab size, initialized to very low probability
         expanded_draft_lp = torch.full(
@@ -326,10 +329,13 @@ def spec_ensemble_verify(prefix_ids:  List[int],
         
         # Update draft_lp to the expanded version
         draft_lp = expanded_draft_lp
-        logger.debug(f"Draft logits expanded from {draft_vocab_size} to {target_vocab_size} tokens")
-        logger.debug(f"Expanded draft logits shape: {draft_lp.shape}")
+        logger.debug(f"SUCCESS: Draft logits expanded from {draft_vocab_size} to {target_vocab_size} tokens")
+        logger.debug(f"New draft logits shape: {draft_lp.shape}")
     else:
-        logger.debug(f"Vocabulary sizes match: {draft_lp.shape[-1]}")
+        logger.debug(f"Vocabulary sizes match: {draft_vocab_size}")
+    
+    # Final verification before mixing
+    logger.debug(f"FINAL CHECK - draft_lp: {draft_lp.shape}, large_lp: {large_lp.shape}")
     
     # mixture logits then probs
     mix_lp = torch.logaddexp(math.log1p(-alpha) + large_lp,
