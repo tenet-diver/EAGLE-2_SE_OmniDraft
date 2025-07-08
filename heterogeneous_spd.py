@@ -413,8 +413,10 @@ def heterogeneous_spec_decode(prompt: str,
             if not draft_prefix:
                 logger.info("Draft tree returned empty prefix - falling back to large model")
                 # drafter not confident – fall back to large model for 1 token
-                next_tok = large_lm.generate(out_large, max_new_tokens=1)[0, -1:]
-                logger.debug(f"Large model fallback token: {next_tok.item()}")
+                next_tok_full = large_lm.generate(out_large, max_new_tokens=1)
+                next_tok = next_tok_full[0, -1:].unsqueeze(0)  # Ensure 2D shape [1, 1]
+                logger.debug(f"Large model fallback token: {next_tok.squeeze().item()}")
+                logger.debug(f"Tensor shapes - out_large: {out_large.shape}, next_tok: {next_tok.shape}")
                 out_large = torch.cat([out_large, next_tok], dim=-1)
                 # re-sync tiny context
                 new_text = large_tok.decode(out_large[0])

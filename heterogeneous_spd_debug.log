@@ -117,3 +117,23 @@
 2025-07-08 16:04:54,093 - DEBUG - load_model_efficiently:52 - Loading model with torch.float16 precision
 2025-07-08 16:04:54,208 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json HTTP/1.1" 307 0
 2025-07-08 16:04:54,223 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json HTTP/1.1" 200 0
+2025-07-08 16:07:43,157 - INFO - <module>:71 - Starting tokenizer loading...
+2025-07-08 16:07:43,158 - DEBUG - <module>:76 - Loading tiny tokenizer: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+2025-07-08 16:07:43,200 - DEBUG - _new_conn:939 - Starting new HTTPS connection (1): huggingface.co:443
+2025-07-08 16:07:43,418 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+2025-07-08 16:07:43,488 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer_config.json HTTP/1.1" 200 0
+2025-07-08 16:07:43,653 - DEBUG - <module>:78 - Tiny tokenizer vocab size: 32000
+2025-07-08 16:07:43,653 - DEBUG - <module>:79 - Tiny tokenizer EOS token: 2
+2025-07-08 16:07:43,653 - DEBUG - <module>:81 - Loading large tokenizer: Qwen/Qwen3-0.6B
+2025-07-08 16:07:43,781 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /Qwen/Qwen3-0.6B/resolve/main/tokenizer_config.json HTTP/1.1" 307 0
+2025-07-08 16:07:43,846 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /api/resolve-cache/models/Qwen/Qwen3-0.6B/e6de91484c29aa9480d55605af694f39b081c455/tokenizer_config.json HTTP/1.1" 200 0
+2025-07-08 16:07:44,491 - DEBUG - <module>:83 - Large tokenizer vocab size: 151643
+2025-07-08 16:07:44,491 - DEBUG - <module>:84 - Large tokenizer EOS token: 151645
+2025-07-08 16:07:44,491 - INFO - <module>:86 - Tokenizers loaded successfully
+2025-07-08 16:07:44,491 - INFO - load_model_efficiently:46 - Starting model load: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+2025-07-08 16:07:44,491 - DEBUG - load_model_efficiently:47 - Device: cpu, Offload to CPU: False
+2025-07-08 16:07:44,491 - DEBUG - clear_gpu_memory:34 - Clearing GPU memory cache
+2025-07-08 16:07:44,491 - DEBUG - clear_gpu_memory:42 - CUDA not available, skipping GPU memory clear
+2025-07-08 16:07:44,492 - DEBUG - load_model_efficiently:52 - Loading model with torch.float16 precision
+2025-07-08 16:07:44,620 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json HTTP/1.1" 307 0
+2025-07-08 16:07:44,681 - DEBUG - _make_request:433 - https://huggingface.co:443 "HEAD /api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json HTTP/1.1" 200 0
